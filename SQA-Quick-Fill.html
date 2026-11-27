@@ -2,9 +2,9 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap">
 <style>
 /* Layout: one question group per screen, big tap targets, sticky Back/Next bar. Palette: harbour teal on cold paper. */
-:root{--bg:#eef3f6;--card:#ffffff;--ink:#10202b;--muted:#566876;--line:#d3dde4;--accent:#0a6a86;--accent-ink:#ffffff;--soft:#dcedf3;--ok:#1b7a4b;--warn:#9a5200;--warn-bg:#fdeed8;--font:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;--head:'Space Grotesk','Inter',system-ui,sans-serif}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1a22;--card:#15262f;--ink:#e6eef3;--muted:#9bb0bd;--line:#27414d;--accent:#58b9d4;--accent-ink:#06222c;--soft:#1b3844;--ok:#5fcf93;--warn:#f0b35c;--warn-bg:#3a2a12;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#0d1a22;--card:#15262f;--ink:#e6eef3;--muted:#9bb0bd;--line:#27414d;--accent:#58b9d4;--accent-ink:#06222c;--soft:#1b3844;--ok:#5fcf93;--warn:#f0b35c;--warn-bg:#3a2a12;color-scheme:dark}
+:root{--bg:#eef3f6;--card:#ffffff;--ink:#10202b;--muted:#566876;--line:#d3dde4;--accent:#0a6a86;--accent-ink:#ffffff;--soft:#dcedf3;--ok:#1b7a4b;--warn:#9a5200;--warn-bg:#fdeed8;--err:#c0262d;--font:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;--head:'Space Grotesk','Inter',system-ui,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--err:#ff7b80;--bg:#0d1a22;--card:#15262f;--ink:#e6eef3;--muted:#9bb0bd;--line:#27414d;--accent:#58b9d4;--accent-ink:#06222c;--soft:#1b3844;--ok:#5fcf93;--warn:#f0b35c;--warn-bg:#3a2a12;color-scheme:dark}}
+:root[data-theme="dark"]{--err:#ff7b80;--bg:#0d1a22;--card:#15262f;--ink:#e6eef3;--muted:#9bb0bd;--line:#27414d;--accent:#58b9d4;--accent-ink:#06222c;--soft:#1b3844;--ok:#5fcf93;--warn:#f0b35c;--warn-bg:#3a2a12;color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.45;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:0 96px;margin:0}
 .wrap{max-width:560px;margin:0 auto}
@@ -48,6 +48,16 @@ nav button.go{flex:1;background:var(--accent);color:var(--accent-ink);border-col
 nav button[disabled]{opacity:.45}
 ul.sum{margin:0;padding-left:18px}
 .hint{font-size:13px;color:var(--muted)}
+.err{color:var(--err);font-weight:600;font-size:14px;margin:6px 0 0}
+.err.top{background:var(--card);border:2px solid var(--err);border-radius:10px;padding:10px 12px;margin:0 0 12px}
+input.bad{border-color:var(--err);border-width:2px}
+.seg.bad button{border-color:var(--err)}
+.card.bad{border-color:var(--err);border-width:2px}
+canvas.bad{border:2px dashed var(--err)}
+.up{padding:0 0 10px 36px}
+.up input[type=file]{width:100%;font:inherit;font-size:14px}
+.up .got{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px;word-break:break-all}
+.up .got button{font:inherit;font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head><body>
@@ -174,7 +184,21 @@ var SQA = (function () {
                 }
                 T(pg, s.date, 462, 618, 78, 8.5);
               });
-              return doc.save({ useObjectStreams: false });
+              var atts = (s.attachments || []).slice();
+              var chain = Promise.resolve();
+              atts.forEach(function(a){
+                chain = chain.then(function(){
+                  if (a.type === 'application/pdf') {
+                    return PDFLib.PDFDocument.load(a.bytes, { ignoreEncryption: true }).then(function(src){ return doc.copyPages(src, src.getPageIndices()); }).then(function(pgs){ pgs.forEach(function(x){ doc.addPage(x); }); });
+                  }
+                  var emb = a.type === 'image/png' ? doc.embedPng(a.bytes) : doc.embedJpg(a.bytes);
+                  return emb.then(function(im){
+                    var pg = doc.addPage([612, 792]), mw = 540, mh = 700, k = Math.min(mw / im.width, mh / im.height, 1);
+                    pg.drawImage(im, { x: (612 - im.width * k) / 2, y: 792 - 46 - im.height * k, width: im.width * k, height: im.height * k });
+                  });
+                });
+              });
+              return chain.then(function(){ return doc.save({ useObjectStreams: false }); });
             });
           });
         });
@@ -209,7 +233,7 @@ var ASK = {
 var DOCS = ['Letter of continuing guarantee and/or CFIA license copy','Foreign government license','Label sample','Product specification','Ingredients: specification sheets','Packing material: food-grade approval letter','Third party certificate copy','Audit report from an independent auditor','This SQA form'];
 var ALG = SQA.ALLERGENS;
 var today = new Date(); var iso = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
-var S = { step: 0, role: null, company: '', date: iso, asked: {}, docs: [], certs: {}, certOther: '', labels: null, types: {}, copies: {}, sulph: null, yn: [true, null, null, null], cfv: '', address: '', person: '', position: '', phone: '', email: '', sig: false };
+var S = { step: 0, role: null, company: '', date: iso, asked: {}, docs: [], certs: {}, certFiles: {}, showErr: false, certOther: '', labels: null, types: {}, copies: {}, sulph: null, yn: [true, null, null, null], cfv: '', address: '', person: '', position: '', phone: '', email: '', sig: false };
 var STEPS = ['role','you','boxes','papers','labels','allergens','questions','sign','review'];
 var stage = document.getElementById('stage'), nextB = document.getElementById('next'), backB = document.getElementById('back');
 function esc(t){ return String(t).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -226,15 +250,38 @@ function copyList(){
   ['fish','crust','other'].forEach(function(t){ if (S.types[t] && S.copies[t]) { var c = S.copies[t]; var g = c.grid.map(function(r){ return r.slice(); }); if (t === 'crust' && !R().grid && S.sulph === true) g[10] = [true,true,true]; out.push({ type: t, label: names[t], product: c.product ? c.product : names[t], grid: g }); } });
   return out;
 }
-function valid(){
-  var k = STEPS[S.step];
-  if (k === 'role') return !!S.role;
-  if (k === 'you') return S.company.trim().length > 1;
-  if (k === 'boxes') return R().ask.every(function(n){ return S.asked[n] === true || S.asked[n] === false; });
-  if (k === 'labels') return S.labels !== null;
-  if (k === 'allergens') return copyList().length > 0 && (!S.types.crust || R().grid || S.sulph !== null);
-  if (k === 'questions') return S.yn.every(function(v){ return v === true || v === false; });
-  return true;
+function errors(){
+  var k = STEPS[S.step], e = {};
+  if (k === 'you') { if (S.company.trim().length < 2) e.company = 'Enter your ' + (S.role === 'fisherman' ? 'vessel or business name.' : 'business name.'); if (!String(S.date).trim()) e.date = 'Enter the date.'; }
+  else if (k === 'boxes') { R().ask.forEach(function(n){ if (S.asked[n] !== true && S.asked[n] !== false) e['ask' + n] = 'Pick Yes or No.'; }); }
+  else if (k === 'papers') { if (S.certs.other && !S.certOther.trim()) e.certOther = 'Enter the name of the certificate.'; Object.keys(S.certFiles).forEach(function(c){ if (S.certs[c] && S.certFiles[c] && S.certFiles[c].tooBig) e['file-' + c] = 'This file could not be added. Use a PDF or photo under 10 MB.'; }); }
+  else if (k === 'labels') { if (S.labels === null) e.labels = 'Pick one.'; }
+  else if (k === 'allergens') {
+    if (!copyList().length) e.types = 'Tick at least one product type.';
+    ['fish','crust','other'].forEach(function(t){ if (S.types[t] && S.copies[t] && !S.copies[t].product.trim()) e['prod-' + t] = 'Enter the product or species.'; });
+    if (S.types.crust && !R().grid && S.sulph === null) e.sulph = 'Pick Yes or No.';
+  }
+  else if (k === 'questions') { S.yn.forEach(function(v, i){ if (v !== true && v !== false) e['yn' + i] = 'Pick Yes or No.'; }); }
+  else if (k === 'sign') {
+    ['cfv','address','person','position'].forEach(function(f){ if (!String(S[f]).trim()) e[f] = 'Fill in this line.'; });
+    if (String(S.phone).replace(/\D/g, '').length < 7) e.phone = 'Enter a phone number.';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(S.email).trim())) e.email = 'Enter a valid e-mail.';
+    if (!S.sig) e.sig = 'Sign with your finger.';
+  }
+  return e;
+}
+function valid(){ return Object.keys(errors()).length === 0; }
+function E(key){ return '<div class="err" data-e="' + key + '" role="alert" hidden></div>'; }
+function paintErrs(){
+  var e = errors(), any = false, first = null;
+  stage.querySelectorAll('.err[data-e]').forEach(function(d){
+    var key = d.dataset.e; if (key === '__top') return;
+    var bad = S.showErr && !!e[key];
+    d.hidden = !bad; if (bad) { d.textContent = e[key]; any = true; if (!first) first = d; }
+    var prev = d.previousElementSibling; if (prev) prev.classList.toggle('bad', bad);
+  });
+  var top = stage.querySelector('.err.top'); if (top) { top.hidden = !(S.showErr && any); top.textContent = 'Some lines are missing. Fix the red items to continue.'; }
+  return first;
 }
 function head(t, l){ return '<h1>' + t + '</h1>' + (l ? '<p class="lead">' + l + '</p>' : ''); }
 function view(){
@@ -242,30 +289,36 @@ function view(){
   if (k === 'role') {
     h = head('What do you do?', 'Pick one. You will only see the questions that apply to you.') + '<div class="big">' + Object.keys(ROLES).map(function(id){ var r = ROLES[id]; return '<button type="button" class="btn ' + (S.role === id ? 'on' : '') + '" data-role="' + id + '">' + r.name + '<small>' + r.sub + '</small></button>'; }).join('') + '</div>';
   } else if (k === 'you') {
-    h = head('Your business', 'This goes on page 1 and page 5 of the SQA.') + '<div class="card"><label class="f" for="company">' + (S.role === 'fisherman' ? 'Vessel or business name' : 'Business name') + '</label><input type="text" id="company" data-k="company" autocomplete="organization" value="' + esc(S.company) + '"><label class="f" for="date">Date</label><input type="text" id="date" data-k="date" value="' + esc(S.date) + '"></div>';
+    h = head('Your business', 'This goes on page 1 and page 5 of the SQA.') + '<div class="card"><label class="f" for="company">' + (S.role === 'fisherman' ? 'Vessel or business name' : 'Business name') + '</label><input type="text" id="company" data-k="company" autocomplete="organization" value="' + esc(S.company) + '">' + E('company') + '<label class="f" for="date">Date</label><input type="text" id="date" data-k="date" value="' + esc(S.date) + '">' + E('date') + '</div>';
   } else if (k === 'boxes') {
     var r = R();
-    h = head('Pages 1 and 2: boxes to tick', 'These boxes will be ticked for you.') + '<div class="card">' + r.auto.map(function(n){ return '<div class="item"><div class="num">' + n + '</div><div>' + PLAIN[n] + '</div></div>'; }).join('') + '</div>';
-    h += '<h1 style="font-size:20px">If it applies to you</h1>' + r.ask.map(function(n){ return '<div class="card"><div class="q">' + ASK[n] + '</div><div class="hint">Box ' + n + ': ' + PLAIN[n] + '</div>' + seg('ask' + n, S.asked[n] === undefined ? '' : S.asked[n], [['true','Yes'],['false','No']]) + '</div>'; }).join('');
+    h = head('Pages 1 and 2: check marks', 'These check boxes on the form will be ticked for you.') + '<div class="card">' + r.auto.map(function(n){ return '<div class="item"><div class="num">' + n + '</div><div>' + PLAIN[n] + '</div></div>'; }).join('') + '</div>';
+    h += '<h1 style="font-size:20px">If it applies to you</h1>' + r.ask.map(function(n){ return '<div class="card"><div class="q">' + ASK[n] + '</div><div class="hint">Box ' + n + ': ' + PLAIN[n] + '</div>' + seg('ask' + n, S.asked[n] === undefined ? '' : S.asked[n], [['true','Yes'],['false','No']]) + E('ask' + n) + '</div>'; }).join('');
   } else if (k === 'papers') {
     var r2 = R();
     h = head('Page 3: papers and certificates', 'Tick what you attach. Attach a copy of each one.') + '<div class="card">' + r2.docs.map(function(i){ return '<label class="chk"><input type="checkbox" data-doc="' + i + '"' + (S.docs.indexOf(i) > -1 ? ' checked' : '') + '><span>' + DOCS[i] + '</span></label>'; }).join('') + '</div>';
-    h += '<div class="card"><div class="q">Certifications you hold</div>' + [['haccp','HACCP'],['sqf','SQF'],['brc','BRC'],['msc','MSC'],['other','Other (for example BAP)']].map(function(c){ return '<label class="chk"><input type="checkbox" data-cert="' + c[0] + '"' + (S.certs[c[0]] ? ' checked' : '') + '><span>' + c[1] + '</span></label>'; }).join('');
-    if (S.certs.other) h += '<label class="f" for="certOther">Name of the other certificate</label><input type="text" id="certOther" data-k="certOther" value="' + esc(S.certOther) + '">';
+    h += '<div class="card"><div class="q">Certifications you hold</div><div class="hint">Tick each one you hold. You can attach the certificate (PDF or photo) here, or send it with your SQA.</div>' + [['haccp','HACCP'],['sqf','SQF'],['brc','BRC'],['msc','MSC'],['other','Other (for example BAP)']].map(function(c){
+      var x = '<label class="chk"><input type="checkbox" data-cert="' + c[0] + '"' + (S.certs[c[0]] ? ' checked' : '') + '><span>' + c[1] + '</span></label>';
+      if (!S.certs[c[0]]) return x;
+      if (c[0] === 'other') x += '<div class="up"><label class="f" for="certOther" style="margin-top:0">Name of the other certificate</label><input type="text" id="certOther" data-k="certOther" value="' + esc(S.certOther) + '">' + E('certOther') + '</div>';
+      var f = S.certFiles[c[0]];
+      x += '<div class="up">' + (f && !f.tooBig ? '<div class="got"><span class="ok">Attached:</span> ' + esc(f.name) + ' <button type="button" data-rm="' + c[0] + '">Remove</button></div>' : '<input type="file" accept="application/pdf,image/jpeg,image/png" data-certfile="' + c[0] + '" aria-label="Attach ' + c[1] + ' certificate">') + E('file-' + c[0]) + '</div>';
+      return x;
+    }).join('');
     h += '</div>';
     var any = Object.keys(S.certs).some(function(c){ return S.certs[c]; }) || S.docs.some(function(i){ return i !== 8; });
-    if (any) h += '<div class="note">Attach a copy of every certificate and paper you ticked, and send them with your SQA.</div>';
+    if (any) h += '<div class="note">Attach a copy of every paper you ticked, and every certificate you did not attach above. Send them with your SQA.</div>';
   } else if (k === 'labels') {
-    h = head('Page 4: labels') + '<div class="card"><div class="q">Do you put labels on your boxes?</div>' + seg('labels', S.labels === null ? '' : S.labels, [['no','No labels'],['yes','Yes, I label']]) + '</div>' + (S.labels === 'no' ? '<p class="hint">N/A will be marked on every line.</p>' : '') + (S.labels === 'yes' ? '<div class="note">Attach a sample label. Southside will complete the label checklist.</div>' : '');
+    h = head('Page 4: labels on boxes (totes)') + '<div class="card"><div class="q">Do you put labels on your boxes (totes)?</div>' + seg('labels', S.labels === null ? '' : S.labels, [['no','No labels'],['yes','Yes, I label']]) + E('labels') + '</div>' + (S.labels === 'no' ? '<p class="hint">N/A will be marked on every line.</p>' : '') + (S.labels === 'yes' ? '<div class="note">Attach a sample label. Southside will complete the label checklist.</div>' : '');
   } else if (k === 'allergens') {
     var r3 = R();
-    h = head('Page 5: allergens', 'Fish and crustaceans go on separate copies. Pick what you deliver.') + '<div class="card">' + [['fish','Fish'],['crust',r3.crust],['other','Other product (no fish or shellfish)']].map(function(t){ return '<label class="chk"><input type="checkbox" data-type="' + t[0] + '"' + (S.types[t[0]] ? ' checked' : '') + '><span>' + t[1] + '</span></label>'; }).join('') + '</div>';
+    h = head('Page 5: allergens', 'Fish and crustaceans go on separate copies. Pick what you deliver.') + '<div class="card">' + [['fish','Fish'],['crust',r3.crust],['other','Other product (no fish or shellfish)']].map(function(t){ return '<label class="chk"><input type="checkbox" data-type="' + t[0] + '"' + (S.types[t[0]] ? ' checked' : '') + '><span>' + t[1] + '</span></label>'; }).join('') + '</div>' + E('types');
     ['fish','crust','other'].forEach(function(t){
       if (!S.types[t]) return;
       var c = S.copies[t], nm = { fish: 'Fish copy', crust: 'Crustacean copy', other: 'Other product copy' }[t];
-      h += '<div class="card"><div class="q">' + nm + '</div><label class="f" for="prod-' + t + '">Product or species (for example Sockeye salmon)</label><input type="text" id="prod-' + t + '" data-prod="' + t + '" value="' + esc(c.product) + '">';
+      h += '<div class="card"><div class="q">' + nm + '</div><label class="f" for="prod-' + t + '">Product or species (for example Sockeye salmon)</label><input type="text" id="prod-' + t + '" data-prod="' + t + '" value="' + esc(c.product) + '">' + E('prod-' + t);
       if (t !== 'other' && !r3.grid) h += '<p class="hint">' + (t === 'fish' ? 'Fish' : 'Crustaceans') + ': YES in all 3 columns. Every other line: NO.</p>';
-      if (t === 'crust' && !r3.grid) h += '<div class="q" style="margin-top:10px">Do you use a metabisulphite dip?</div>' + seg('sulph', S.sulph === null ? '' : S.sulph, [['true','Yes'],['false','No']]);
+      if (t === 'crust' && !r3.grid) h += '<div class="q" style="margin-top:10px">Do you use a metabisulphite dip?</div>' + seg('sulph', S.sulph === null ? '' : S.sulph, [['true','Yes'],['false','No']]) + E('sulph');
       if (r3.grid) {
         h += '<div class="hint" style="margin:10px 0 4px">Column I: in the product. II: other products on the same line. III: anywhere in your plant.</div><div class="gridrow h"><div></div><div>I</div><div>II</div><div>III</div></div>';
         ALG.forEach(function(a, i){ h += '<div class="gridrow"><div>' + a + '</div>' + [0,1,2].map(function(col){ var v = c.grid[i][col]; return '<button type="button" data-g="' + t + ',' + i + ',' + col + '" class="' + (v ? 'y' : '') + '">' + (v ? 'YES' : 'NO') + '</button>'; }).join('') + '</div>'; });
@@ -274,28 +327,30 @@ function view(){
     });
   } else if (k === 'questions') {
     var Q = ['Do you have procedures to avoid cross-contamination with the allergens in columns II and III?','Do you have current, acceptable third-party audit results or a viable assessment?','Is transport to Southside reviewed and acceptable?','Will you tell Southside before you change or substitute the product?'];
-    h = head('Page 5: four questions', 'Yes if you have it. No or N/A if you do not.') + Q.map(function(q, i){ return '<div class="card"><div class="q">' + q + '</div>' + (i === 0 ? '<div class="hint">You should have cross-contamination procedures.</div>' : '') + seg('yn' + i, S.yn[i] === null ? '' : S.yn[i], [['true','Yes'],['false','No / N/A']]) + '</div>'; }).join('');
+    h = head('Page 5: four questions', 'Yes if you have it. No or N/A if you do not.') + Q.map(function(q, i){ return '<div class="card"><div class="q">' + q + '</div>' + (i === 0 ? '<div class="hint">You should have cross-contamination procedures.</div>' : '') + seg('yn' + i, S.yn[i] === null ? '' : S.yn[i], [['true','Yes'],['false','No / N/A']]) + E('yn' + i) + '</div>'; }).join('');
   } else if (k === 'sign') {
     h = head('Contact details and signature', 'Fill in every line in full detail.') + '<div class="card">' +
       fld('cfv','CFV # or Plant Reg. #','text') + fld('address','Address','text','street-address') + fld('person', S.role === 'farm' ? 'Owner or manager' : 'Name of person responsible','text','name') + fld('position','Position','text') + fld('phone','Phone #','tel','tel') + fld('email','E-mail','email','email') +
-      '<label class="f">Signature (draw with your finger)</label><canvas id="sig" width="900" height="260"></canvas><div class="row" style="margin-top:8px"><button type="button" class="btn" id="clr" style="min-height:44px;padding:8px 14px">Clear</button><span class="hint">The Southside lines stay blank.</span></div></div>';
+      '<label class="f">Signature (draw with your finger)</label><canvas id="sig" width="900" height="260"></canvas>' + E('sig') + '<div class="row" style="margin-top:8px"><button type="button" class="btn" id="clr" style="min-height:44px;padding:8px 14px">Clear</button><span class="hint">The Southside lines stay blank.</span></div></div>';
   } else {
     var miss = [];
     ['company','cfv','address','person','position','phone','email'].forEach(function(f){ if (!String(S[f] || '').trim()) miss.push(f); });
     if (!S.sig) miss.push('signature');
     var cl = copyList();
-    h = head('Check and save', 'Your SQA will be made from the original Southside form.') + '<div class="card"><ul class="sum"><li><b>' + esc(S.company) + '</b> · ' + R().name + '</li><li>Boxes ticked: ' + ticked().join(', ') + '</li><li>Allergen copies: ' + cl.map(function(c){ return esc(c.label); }).join(', ') + '</li><li>Labels: ' + (S.labels === 'no' ? 'N/A on every line' : 'sample label attached') + '</li></ul></div>';
+    h = head('Check and save', 'Your SQA will be made from the original Southside form.') + '<div class="card"><ul class="sum"><li><b>' + esc(S.company) + '</b> · ' + R().name + '</li><li>Check marks: ' + ticked().join(', ') + '</li><li>Allergen copies: ' + cl.map(function(c){ return esc(c.label); }).join(', ') + '</li><li>Labels on boxes (totes): ' + (S.labels === 'no' ? 'N/A on every line' : 'sample label attached') + '</li><li>Certificates attached: ' + (['haccp','sqf','brc','msc','other'].filter(function(c){ return S.certs[c] && S.certFiles[c] && S.certFiles[c].bytes; }).map(function(c){ return c.toUpperCase(); }).join(', ') || 'none') + '</li></ul></div>';
     if (miss.length) h += '<div class="note">Not filled in yet: ' + miss.join(', ') + '. Southside asks for every line in full detail. Go back to add them.</div>';
     h += '<button type="button" class="btn on" id="make" style="width:100%;text-align:center">Create my SQA PDF</button><p class="hint" id="msg" role="status"></p>';
   }
+  if (k !== 'role' && k !== 'review') h = '<div class="err top" data-e="__top" role="alert" hidden></div>' + h;
   stage.innerHTML = h;
   document.getElementById('prog').style.width = ((S.step + 1) / STEPS.length * 100) + '%';
   backB.style.visibility = S.step === 0 ? 'hidden' : 'visible';
   nextB.style.display = k === 'review' ? 'none' : '';
-  nextB.disabled = !valid();
+  nextB.disabled = false;
   if (k === 'sign') initSig();
+  paintErrs();
 }
-function fld(k, label, type, ac){ return '<label class="f" for="' + k + '">' + label + '</label><input type="' + type + '" id="' + k + '" data-k="' + k + '"' + (ac ? ' autocomplete="' + ac + '"' : '') + ' value="' + esc(S[k]) + '">'; }
+function fld(k, label, type, ac){ return '<label class="f" for="' + k + '">' + label + '</label><input type="' + type + '" id="' + k + '" data-k="' + k + '"' + (ac ? ' autocomplete="' + ac + '"' : '') + ' value="' + esc(S[k]) + '">' + E(k); }
 var sigCanvas = null;
 function initSig(){
   var c = document.getElementById('sig'); sigCanvas = c; var ctx = c.getContext('2d'); ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
@@ -313,7 +368,8 @@ function initSig(){
 }
 stage.addEventListener('click', function(e){
   var b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.role) { if (S.role !== b.dataset.role) { S.role = b.dataset.role; S.asked = {}; S.docs = R().defDocs.slice(); S.types = {}; S.copies = {}; S.sulph = null; } S.step = 1; view(); return; }
+  if (b.dataset.rm) { delete S.certFiles[b.dataset.rm]; view(); return; }
+  if (b.dataset.role) { if (S.role !== b.dataset.role) { S.role = b.dataset.role; S.asked = {}; S.docs = R().defDocs.slice(); S.types = {}; S.copies = {}; S.sulph = null; } S.showErr = false; S.step = 1; view(); return; }
   var sg = b.parentElement && b.parentElement.dataset.seg;
   if (sg) {
     var v = b.dataset.v;
@@ -329,15 +385,25 @@ stage.addEventListener('change', function(e){
   var t = e.target;
   if (t.dataset.doc !== undefined) { var i = +t.dataset.doc, ix = S.docs.indexOf(i); if (t.checked && ix < 0) S.docs.push(i); if (!t.checked && ix > -1) S.docs.splice(ix, 1); view(); }
   else if (t.dataset.cert) { S.certs[t.dataset.cert] = t.checked; view(); }
+  else if (t.dataset.certfile) {
+    var f = t.files && t.files[0], key = t.dataset.certfile; if (!f) return;
+    var ty = f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : /\.png$/i.test(f.name) ? 'image/png' : 'image/jpeg');
+    if (f.size > 10 * 1024 * 1024) { S.certFiles[key] = { name: f.name, tooBig: true }; S.showErr = true; view(); return; }
+    var rd = new FileReader(); rd.onload = function(){ S.certFiles[key] = { name: f.name, type: ty, bytes: new Uint8Array(rd.result) }; view(); }; rd.onerror = function(){ S.certFiles[key] = { name: f.name, tooBig: true }; S.showErr = true; view(); }; rd.readAsArrayBuffer(f);
+  }
   else if (t.dataset.type) { setType(t.dataset.type, t.checked); view(); }
 });
 stage.addEventListener('input', function(e){
   var t = e.target;
-  if (t.dataset.k) { S[t.dataset.k] = t.value; if (STEPS[S.step] === 'you') nextB.disabled = !valid(); }
-  else if (t.dataset.prod) { S.copies[t.dataset.prod].product = t.value; }
+  if (t.dataset.k) { S[t.dataset.k] = t.value; if (S.showErr) paintErrs(); }
+  else if (t.dataset.prod) { S.copies[t.dataset.prod].product = t.value; if (S.showErr) paintErrs(); }
 });
-nextB.addEventListener('click', function(){ if (valid() && S.step < STEPS.length - 1) { S.step++; view(); window.scrollTo(0, 0); } });
-backB.addEventListener('click', function(){ if (S.step > 0) { S.step--; view(); window.scrollTo(0, 0); } });
+nextB.addEventListener('click', function(){
+  if (valid()) { if (S.step < STEPS.length - 1) { S.showErr = false; S.step++; view(); window.scrollTo(0, 0); } return; }
+  S.showErr = true; var first = paintErrs(); var top = stage.querySelector('.err.top'); var tgt = first || top;
+  if (tgt) tgt.scrollIntoView({ block: 'center', behavior: 'smooth' });
+});
+backB.addEventListener('click', function(){ if (S.step > 0) { S.showErr = false; S.step--; view(); window.scrollTo(0, 0); } });
 function b64ToBytes(b){ var s = atob(b), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
 stage.addEventListener('click', function(e){
   if (e.target.id !== 'make') return;
@@ -348,16 +414,25 @@ stage.addEventListener('click', function(e){
   var cl = copyList();
   var st = { company: S.company.trim(), date: S.date, boxes: ticked(), docs: S.docs.slice(), certs: S.certs, labelNA: S.labels === 'no', copies: cl.map(function(c){ return { product: c.product, grid: c.grid }; }), yn: S.yn, cfv: S.cfv, address: S.address, person: S.person, position: S.position, phone: S.phone, email: S.email, signature: sigBytes };
   st.certs = Object.assign({}, S.certs, { otherText: S.certOther });
+  st.attachments = ['haccp','sqf','brc','msc','other'].filter(function(c){ return S.certs[c] && S.certFiles[c] && S.certFiles[c].bytes; }).map(function(c){ return { type: S.certFiles[c].type, bytes: S.certFiles[c].bytes }; });
   SQA.buildPdf(PDFLib, b64ToBytes(PDF_B64), st).then(function(bytes){ clearInterval(timer);
     var name = 'SQA-' + (S.company.trim().replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'Supplier') + '.pdf';
     var blob = new Blob([bytes], { type: 'application/pdf' });
     var file = null; try { file = new File([blob], name, { type: 'application/pdf' }); } catch (x) {}
     var url = URL.createObjectURL(blob);
-    var h = '<a class="btn on" style="display:block;text-align:center;text-decoration:none;margin-top:10px" download="' + name + '" href="' + url + '">Save the PDF</a>';
-    if (file && navigator.canShare && navigator.canShare({ files: [file] })) h = '<button type="button" class="btn on" id="share" style="width:100%;text-align:center;margin-top:10px">Send or save the PDF</button>' + h;
-    msg.innerHTML = '<span class="ok">Your PDF is ready.</span> Send it with your attached papers to Southside.' + h;
-    var sb = document.getElementById('share');
-    if (sb) sb.addEventListener('click', function(){ navigator.share({ files: [file], title: name }).catch(function(){}); });
+    var can = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
+    var h = '';
+    if (can) h += '<button type="button" class="btn on" id="shmail" style="width:100%;text-align:center;margin-top:10px">Send by e-mail</button><button type="button" class="btn on" id="shmsg" style="width:100%;text-align:center;margin-top:10px">Send by message</button><p class="hint">A list of apps opens. For e-mail pick Gmail or Outlook, then type laura@southsideprocessing.ca in To (copy it below). For message pick Messenger, KakaoTalk or Messages. The PDF is attached for you.</p>';
+    h += '<div class="card" style="margin-top:12px"><div class="hint">Send to</div><div class="q" style="word-break:break-all">laura@southsideprocessing.ca</div><button type="button" class="btn" id="cpmail" style="margin-top:8px;min-height:44px;padding:8px 14px">Copy e-mail address</button></div>';
+    h += '<a class="btn" style="display:block;text-align:center;text-decoration:none;margin-top:10px" download="' + name + '" href="' + url + '">Save the PDF to this phone</a>';
+    msg.innerHTML = '<span class="ok">Your PDF is ready.</span> Send it to Southside. Papers you did not attach in the form go with it.' + h;
+    var subj = 'SQA form - ' + (S.company.trim() || 'Supplier');
+    function sh(body){ return function(){ navigator.share({ files: [file], title: subj, text: body }).catch(function(){}); }; }
+    var cp = document.getElementById('cpmail');
+    if (cp) cp.addEventListener('click', function(){ var done = function(){ cp.textContent = 'Copied'; }; try { navigator.clipboard.writeText('laura@southsideprocessing.ca').then(done, function(){ cp.textContent = 'Select and copy the address above'; }); } catch (x) { cp.textContent = 'Select and copy the address above'; } });
+    var b1 = document.getElementById('shmail'), b2 = document.getElementById('shmsg');
+    if (b1) b1.addEventListener('click', sh('To: laura@southsideprocessing.ca. My filled SQA form is attached.'));
+    if (b2) b2.addEventListener('click', sh('My filled SQA form is attached.'));
   }).catch(function(err){ clearInterval(timer); msg.textContent = 'Could not make the PDF (' + (err && err.message ? err.message : err) + '). Go back, check your answers and try again.'; });
   }, 60);
 });
